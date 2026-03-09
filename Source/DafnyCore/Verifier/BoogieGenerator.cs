@@ -92,10 +92,11 @@ namespace Microsoft.Dafny {
     }
 
     [NotDelayed]
-    public BoogieGenerator(ErrorReporter reporter, ProofDependencyManager depManager, TranslatorFlags flags = null) {
+    public BoogieGenerator(ErrorReporter reporter, ProofDependencyManager depManager, AstMappingManager astMappingManager = null, TranslatorFlags flags = null) {
       this.options = reporter.Options;
       this.flags = new TranslatorFlags(options);
       this.proofDependencies = depManager;
+      this.astMapping = astMappingManager;
       this.reporter = reporter;
       if (flags == null) {
         flags = new TranslatorFlags(options) {
@@ -146,6 +147,7 @@ namespace Microsoft.Dafny {
     readonly Dictionary<string, Bpl.Constant> tytagConstants = new Dictionary<string, Constant>();
 
     private ProofDependencyManager proofDependencies;
+    private AstMappingManager astMapping;
 
     /**
      * The behavior around this field assumes that usages are visited before declarations
@@ -760,7 +762,9 @@ namespace Microsoft.Dafny {
       Contract.Requires(var != null);
       Contract.Requires(tok != null);
       Contract.Ensures(Contract.Result<Bpl.IdentifierExpr>() != null);
-      return new Bpl.IdentifierExpr(tok, var.AssignUniqueName(CurrentDeclaration.IdGenerator), TrType(var.Type));
+      var boogieName = var.AssignUniqueName(CurrentDeclaration.IdGenerator);
+      astMapping?.AddVariable(var, boogieName, tok);
+      return new Bpl.IdentifierExpr(tok, boogieName, TrType(var.Type));
     }
 
     public Bpl.Program DoTranslation(Program p, ModuleDefinition forModule) {
@@ -947,7 +951,7 @@ namespace Microsoft.Dafny {
       Type.ResetScopes();
 
       foreach (ModuleDefinition outerModule in VerifiableModules(p)) {
-        var translator = new BoogieGenerator(reporter, p.ProofDependencyManager, flags);
+        var translator = new BoogieGenerator(reporter, p.ProofDependencyManager, p.AstMappingManager, flags);
 
         if (translator.sink == null || translator.sink == null) {
           // something went wrong during construction, which reads the prelude; an error has
@@ -3080,6 +3084,10 @@ namespace Microsoft.Dafny {
       sink.AddTopLevelDeclaration(GetCanCallFunction(f));
 
       declarationMapping[f] = func;
+
+      // Track function mapping for AST → Boogie tracing
+      astMapping?.AddFunction(f, func.Name);
+
       return func;
     }
 
@@ -3774,6 +3782,11 @@ namespace Microsoft.Dafny {
 
       var ens = Ensures(tok, free, dafnyCondition, condition, errorMessage, successMessage, comment);
       proofDependencies?.AddProofDependencyId(ens, tok, new EnsuresDependency(tok, dafnyCondition));
+      // Track ensures clause for AST → Boogie mapping
+      var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(ens.Attributes, "id");
+      if (boogieId != null) {
+        astMapping?.AddEnsures(dafnyCondition, boogieId, tok);
+      }
       return ens;
     }
     Bpl.Ensures FreeEnsures(IOrigin tok, Bpl.Expr condition, string comment, bool alwaysAssume = false) {
@@ -3804,6 +3817,11 @@ namespace Microsoft.Dafny {
 
       var req = Requires(tok, free, dafnyCondition, condition, errorMessage, successMessage, comment);
       proofDependencies?.AddProofDependencyId(req, tok, new RequiresDependency(tok, dafnyCondition));
+      // Track requires clause for AST → Boogie mapping
+      var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(req.Attributes, "id");
+      if (boogieId != null) {
+        astMapping?.AddRequires(dafnyCondition, boogieId, tok);
+      }
       return req;
     }
     Bpl.Requires FreeRequires(IOrigin tok, Bpl.Expr bCondition, string comment, bool alwaysAssume = false) {

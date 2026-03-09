@@ -492,6 +492,8 @@ namespace Microsoft.Dafny {
 
       currentModule = f.EnclosingClass.EnclosingModuleDefinition;
       codeContext = f;
+      // Track function context for AST → Boogie mapping
+      astMapping?.SetCurrentFunction(f.Name, f.Origin?.filename ?? "unknown");
 
       // declare function
       var boogieFunction = GetOrCreateFunction(f);
@@ -539,6 +541,8 @@ namespace Microsoft.Dafny {
       currentModule = m.EnclosingClass.EnclosingModuleDefinition;
       codeContext = m;
       IsAllocContext = new IsAllocContext(options, m.IsGhost);
+      // Track method context for AST → Boogie mapping
+      astMapping?.SetCurrentMethod(m.Name, m.Origin?.filename ?? "unknown");
 
       List<Variable> inParams = Boogie.Formal.StripWhereClauses(proc.InParams);
       List<Variable> outParams = Boogie.Formal.StripWhereClauses(proc.OutParams);
@@ -850,6 +854,8 @@ namespace Microsoft.Dafny {
       currentModule = m.EnclosingClass.EnclosingModuleDefinition;
       codeContext = m;
       IsAllocContext = new IsAllocContext(options, m.IsGhost);
+      // Track method context for AST → Boogie mapping
+      astMapping?.SetCurrentMethod(m.Name, m.Origin?.filename ?? "unknown");
 
       List<Variable> inParams = Boogie.Formal.StripWhereClauses(proc.InParams);
       List<Variable> outParams = Boogie.Formal.StripWhereClauses(proc.OutParams);

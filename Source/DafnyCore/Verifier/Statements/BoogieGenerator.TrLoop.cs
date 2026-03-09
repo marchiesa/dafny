@@ -243,15 +243,32 @@ public partial class BoogieGenerator {
       var ss = TrSplitExpr(builder.Context, loopInv.E, etran, false, out var splitHappened);
       if (!splitHappened) {
         var wInv = BplImp(w, etran.TrExpr(loopInv.E));
-        invariants.Add(Assert(loopInv.E.Origin, wInv, new LoopInvariant(loopInv.E, errorMessage, successMessage), builder.Context));
+        var assertCmd = Assert(loopInv.E.Origin, wInv, new LoopInvariant(loopInv.E, errorMessage, successMessage), builder.Context);
+        // Track invariant for AST → Boogie mapping
+        var boogieIdNonSplit = Microsoft.Boogie.QKeyValue.FindStringAttribute(assertCmd.Attributes, "id");
+        if (boogieIdNonSplit != null) {
+          astMapping?.AddInvariant(loopInv.E, boogieIdNonSplit, loopInv.E.Origin);
+        }
+        invariants.Add(assertCmd);
       } else {
         foreach (var split in ss) {
           var wInv = Bpl.Expr.Binary(split.E.tok, BinaryOperator.Opcode.Imp, w, split.E);
           if (split.IsChecked) {
-            invariants.Add(Assert(split.Tok, wInv, new LoopInvariant(loopInv.E, errorMessage, successMessage), builder.Context));  // TODO: it would be fine to have this use {:subsumption 0}
+            var assertCmdSplit = Assert(split.Tok, wInv, new LoopInvariant(loopInv.E, errorMessage, successMessage), builder.Context);  // TODO: it would be fine to have this use {:subsumption 0}
+            // Track invariant for AST → Boogie mapping
+            var boogieIdSplit = Microsoft.Boogie.QKeyValue.FindStringAttribute(assertCmdSplit.Attributes, "id");
+            if (boogieIdSplit != null) {
+              astMapping?.AddInvariant(loopInv.E, boogieIdSplit, loopInv.E.Origin);
+            }
+            invariants.Add(assertCmdSplit);
           } else {
             var cmd = TrAssumeCmd(split.E.tok, wInv);
             proofDependencies?.AddProofDependencyId(cmd, loopInv.E.Origin, new InvariantDependency(loopInv.E));
+            // Track invariant for AST → Boogie mapping (extract ID after proofDependencies sets it)
+            var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(cmd.Attributes, "id");
+            if (boogieId != null) {
+              astMapping?.AddInvariant(loopInv.E, boogieId, loopInv.E.Origin);
+            }
             invariants.Add(cmd);
           }
         }

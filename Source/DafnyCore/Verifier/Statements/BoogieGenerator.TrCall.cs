@@ -354,6 +354,11 @@ public partial class BoogieGenerator {
     var calleeName = MethodName(callee, isCoCall ? MethodTranslationKind.CoCall : MethodTranslationKind.Call);
     var call = Call(builder.Context, tok, calleeName, ins, outs);
     proofDependencies?.AddProofDependencyId(call, tok, new CallDependency(cs));
+    // Track call for AST → Boogie mapping
+    var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(call.Attributes, "id");
+    if (boogieId != null) {
+      astMapping?.AddCall(cs, callee.Name, boogieId, tok);
+    }
     if (
       (assertionOnlyFilter != null && !assertionOnlyFilter(tok.ReportingRange.StartToken)) ||
       (module != currentModule && tok.IsInherited(currentModule) && (codeContext == null || !codeContext.MustReverify))) {

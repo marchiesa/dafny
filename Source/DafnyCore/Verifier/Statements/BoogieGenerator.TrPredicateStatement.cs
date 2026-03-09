@@ -150,15 +150,27 @@ namespace Microsoft.Dafny {
       var splits = TrSplitExpr(proofBuilder.Context, stmt.Expr, etran, true, out var splitHappened);
       if (!splitHappened) {
         var desc = new AssertStatementDescription(stmt, errorMessage, successMessage);
-        proofBuilder.Add(Assert(stmt.Origin, etran.TrExpr(stmt.Expr), desc, stmt.Origin, proofBuilder.Context,
-          etran.TrAttributes(stmt.Attributes, null)));
+        var cmd = Assert(stmt.Origin, etran.TrExpr(stmt.Expr), desc, stmt.Origin, proofBuilder.Context,
+          etran.TrAttributes(stmt.Attributes, null));
+        // Track assertion for AST → Boogie mapping
+        var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(cmd.Attributes, "id");
+        if (boogieId != null) {
+          astMapping?.AddAssertion(stmt.Expr, boogieId, stmt.Expr.Origin);
+        }
+        proofBuilder.Add(cmd);
       } else {
         foreach (var split in splits) {
           if (split.IsChecked) {
             var tok = split.E.tok;
             var desc = new AssertStatementDescription(stmt, errorMessage, successMessage);
-            proofBuilder.Add(AssertAndForget(proofBuilder.Context, ToDafnyToken(tok), split.E, desc, stmt.Origin,
-              etran.TrAttributes(stmt.Attributes, null))); // attributes go on every split
+            var cmd = AssertAndForget(proofBuilder.Context, ToDafnyToken(tok), split.E, desc, stmt.Origin,
+              etran.TrAttributes(stmt.Attributes, null)); // attributes go on every split
+            // Track assertion for AST → Boogie mapping
+            var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(cmd.Attributes, "id");
+            if (boogieId != null) {
+              astMapping?.AddAssertion(stmt.Expr, boogieId, stmt.Expr.Origin);
+            }
+            proofBuilder.Add(cmd);
           }
         }
       }

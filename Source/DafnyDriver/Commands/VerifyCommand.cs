@@ -22,6 +22,7 @@ public static class VerifyCommand {
     OptionRegistry.RegisterOption(FilterSymbol, OptionScope.Cli);
     OptionRegistry.RegisterOption(FilterPosition, OptionScope.Cli);
     OptionRegistry.RegisterOption(PerformanceStatisticsOption, OptionScope.Cli);
+    OptionRegistry.RegisterOption(AstMappingOption, OptionScope.Cli);
   }
 
   public static readonly Option<int> PerformanceStatisticsOption = new("--performance-stats",
@@ -50,7 +51,8 @@ public static class VerifyCommand {
         PerformanceStatisticsOption,
         FilterSymbol,
         FilterPosition,
-        DafnyFile.DoNotVerifyDependencies
+        DafnyFile.DoNotVerifyDependencies,
+        AstMappingOption
       }.Concat(DafnyCommands.VerificationOptions).
       Concat(DafnyCommands.ConsoleOutputOptions).
       Concat(DafnyCommands.ResolverOptions);
@@ -76,10 +78,21 @@ public static class VerifyCommand {
       await verificationSummarized;
       await verificationResultsLogged;
       await proofDependenciesReported;
+
+      // TEMPORARY: Export AST mapping for testing
+      var astMappingPath = options.Get(AstMappingOption);
+      if (astMappingPath != null) {
+        resolution.ResolvedProgram.AstMappingManager.ExportToFile(astMappingPath);
+      }
     }
 
     return await compilation.GetAndReportExitCode();
   }
+
+  public static readonly Option<string?> AstMappingOption = new("--ast-mapping",
+    "Export AST to Boogie mapping to a JSON file") {
+    IsHidden = true
+  };
 
   public static async Task ReportVerificationSummary(
     CliCompilation cliCompilation,

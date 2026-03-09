@@ -20,6 +20,8 @@ public partial class BoogieGenerator {
       Contract.Assert(forallStmt.Ens.Count == 0);
       if (forallStmt.BoundVars.Count == 0) {
         TrStmt(forallStmt.Body, builder, locals, etran);
+        // Track trivial forall assign (no bound vars) for AST → Boogie mapping
+        astMapping?.AddForall(forallStmt, "assign", null, forallStmt.Origin);
       } else {
         var s0 = (SingleAssignStmt)forallStmt.S0;
         var definedness = new BoogieStmtListBuilder(this, options, builder.Context);
@@ -29,6 +31,7 @@ public partial class BoogieGenerator {
         // All done, so put the two pieces together
         builder.Add(new Bpl.IfCmd(forallStmt.Origin, null, definedness.Collect(forallStmt.Origin), null, updater.Collect(forallStmt.Origin)));
         builder.AddCaptureState(forallStmt);
+        // Note: TrForallAssign also adds the forall mapping
       }
 
     } else if (forallStmt.Kind == ForallStmt.BodyKind.Call) {
@@ -52,6 +55,10 @@ public partial class BoogieGenerator {
           builder.Add(new Bpl.IfCmd(forallStmt.Origin, null, definedness.Collect(forallStmt.Origin), null, exporter.Collect(forallStmt.Origin)));
         }
         builder.AddCaptureState(forallStmt);
+        // Track forall call for AST → Boogie mapping
+        // Note: forall call generates assumptions of lemma postconditions, not assertions
+        astMapping?.AddForall(forallStmt, "call", null, forallStmt.Origin,
+          callee: s0.Method.Name);
       }
 
     } else if (forallStmt.Kind == ForallStmt.BodyKind.Proof) {
@@ -431,6 +438,10 @@ public partial class BoogieGenerator {
         updater.Add(TrAssumeCmd(s.Origin, qq));
       }
     }
+
+    // Track forall assign for AST → Boogie mapping
+    // Note: forall assign generates assumptions, not assertions, so no {:id} attribute
+    astMapping?.AddForall(s, "assign", null, s.Origin);
   }
 
   /// <summary>
@@ -552,7 +563,14 @@ public partial class BoogieGenerator {
 
         foreach (var split in TrSplitExpr(definedness.Context, ens.E, etran, true, out var splitHappened)) {
           if (split.IsChecked) {
-            definedness.Add(Assert(split.Tok, split.E, new ForallPostcondition(ens.E), definedness.Context));
+            var cmd = Assert(split.Tok, split.E, new ForallPostcondition(ens.E), definedness.Context);
+            // Track forall proof postcondition for AST → Boogie mapping
+            var boogieId = Microsoft.Boogie.QKeyValue.FindStringAttribute(cmd.Attributes, "id");
+            if (boogieId != null) {
+              astMapping?.AddForall(forallStmt, "proof", boogieId, forallStmt.Origin,
+                ensures: ens.E.ToString());
+            }
+            definedness.Add(cmd);
           }
         }
       }

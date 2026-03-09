@@ -46,6 +46,8 @@ public class Program : NodeWithoutOrigin {
 
   public ProofDependencyManager ProofDependencyManager { get; set; } = new();
 
+  public AstMappingManager AstMappingManager { get; set; } = new();
+
   /// <summary>
   /// Serializing the state of the Program passed to this backend,
   /// after resolution, can be problematic.
