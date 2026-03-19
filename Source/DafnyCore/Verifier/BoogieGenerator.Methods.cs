@@ -543,6 +543,7 @@ namespace Microsoft.Dafny {
       IsAllocContext = new IsAllocContext(options, m.IsGhost);
       // Track method context for AST → Boogie mapping
       astMapping?.SetCurrentMethod(m.Name, m.Origin?.filename ?? "unknown");
+      astMapping?.SerializeMethodBody(m);
 
       List<Variable> inParams = Boogie.Formal.StripWhereClauses(proc.InParams);
       List<Variable> outParams = Boogie.Formal.StripWhereClauses(proc.OutParams);
@@ -856,6 +857,7 @@ namespace Microsoft.Dafny {
       IsAllocContext = new IsAllocContext(options, m.IsGhost);
       // Track method context for AST → Boogie mapping
       astMapping?.SetCurrentMethod(m.Name, m.Origin?.filename ?? "unknown");
+      astMapping?.SerializeMethodBody(m);
 
       List<Variable> inParams = Boogie.Formal.StripWhereClauses(proc.InParams);
       List<Variable> outParams = Boogie.Formal.StripWhereClauses(proc.OutParams);

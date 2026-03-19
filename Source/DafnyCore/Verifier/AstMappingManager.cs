@@ -437,6 +437,133 @@ public class AstMappingManager {
   /// <summary>
   /// Export the complete mapping to a JSON file
   /// </summary>
+  /// <summary>
+  /// Serialize the method body statements (excluding asserts) for code comparison.
+  /// Call this after SetCurrentMethod with the Dafny Method object.
+  /// </summary>
+  public void SerializeMethodBody(MemberDecl memberDecl) {
+    if (currentMethod == null || !Methods.TryGetValue(currentMethod, out var method)) {
+      return;
+    }
+    if (memberDecl is Method m && m.Body != null) {
+      method.BodyStatements = SerializeStatementList(m.Body.Body);
+    }
+  }
+
+  private List<BodyStatement> SerializeStatementList(List<Statement> stmts) {
+    var result = new List<BodyStatement>();
+    if (stmts == null) return result;
+    foreach (var stmt in stmts) {
+      var serialized = SerializeStatement(stmt);
+      if (serialized != null) {
+        result.Add(serialized);
+      }
+    }
+    return result;
+  }
+
+  private BodyStatement SerializeStatement(Statement stmt) {
+    // Skip assert statements — those are what the LLM is allowed to add/change
+    if (stmt is AssertStmt) return null;
+    // Skip assume statements too
+    if (stmt is AssumeStmt) return null;
+
+    var bs = new BodyStatement {
+      Type = stmt.GetType().Name,
+      Line = stmt.Origin?.line ?? 0,
+    };
+
+    switch (stmt) {
+      case VarDeclStmt vds:
+        bs.Type = "VarDecl";
+        bs.Text = string.Join(", ", vds.Locals.Select(l => $"{l.Name}: {l.Type}"));
+        if (vds.Assign != null) {
+          var assignSerialized = SerializeStatement(vds.Assign);
+          if (assignSerialized != null) {
+            bs.Children = new List<BodyStatement> { assignSerialized };
+          }
+        }
+        break;
+
+      case AssignStatement assign:
+        bs.Type = "Assign";
+        var rhsTexts = assign.Rhss.Select(r => r is ExprRhs er ? er.Expr.ToString() : r.ToString());
+        bs.Text = string.Join(", ", assign.Lhss.Select(l => l.ToString()))
+                   + " := "
+                   + string.Join(", ", rhsTexts);
+        break;
+
+      case ConcreteAssignStatement cas:
+        bs.Type = "ConcreteAssign";
+        bs.Text = string.Join(", ", cas.Lhss.Select(l => l.ToString()));
+        break;
+
+      case IfStmt ifStmt:
+        bs.Type = "If";
+        bs.Text = ifStmt.Guard?.ToString();
+        bs.Children = new List<BodyStatement>();
+        if (ifStmt.Thn != null)
+          bs.Children.AddRange(SerializeStatementList(ifStmt.Thn.Body));
+        if (ifStmt.Els is BlockStmt elseBlock)
+          bs.Children.AddRange(SerializeStatementList(elseBlock.Body));
+        else if (ifStmt.Els != null)
+          bs.Children.Add(SerializeStatement(ifStmt.Els));
+        bs.Children.RemoveAll(c => c == null);
+        break;
+
+      case WhileStmt whileStmt:
+        bs.Type = "While";
+        bs.Text = whileStmt.Guard?.ToString();
+        if (whileStmt.Body != null)
+          bs.Children = SerializeStatementList(whileStmt.Body.Body);
+        break;
+
+      case ReturnStmt ret:
+        bs.Type = "Return";
+        bs.Text = ret.Rhss != null
+          ? string.Join(", ", ret.Rhss.Select(r => r.ToString()))
+          : null;
+        break;
+
+      case CallStmt call:
+        bs.Type = "Call";
+        bs.Text = call.MethodSelect?.ToString()
+                   + "(" + string.Join(", ", call.Args.Select(a => a.ToString())) + ")";
+        break;
+
+      case BlockStmt block:
+        bs.Type = "Block";
+        bs.Children = SerializeStatementList(block.Body);
+        break;
+
+      case ForallStmt forall:
+        bs.Type = "Forall";
+        bs.Text = forall.BoundVars != null
+          ? string.Join(", ", forall.BoundVars.Select(v => v.Name))
+          : null;
+        if (forall.Body != null)
+          bs.Children = new List<BodyStatement> { SerializeStatement(forall.Body) };
+        bs.Children?.RemoveAll(c => c == null);
+        break;
+
+      case CalcStmt calc:
+        bs.Type = "Calc";
+        break;
+
+      case PrintStmt print:
+        bs.Type = "Print";
+        bs.Text = string.Join(", ", print.Args.Select(a => a.ToString()));
+        break;
+
+      default:
+        // For any other statement type, record its type name and text
+        bs.Text = stmt.ToString();
+        break;
+    }
+
+    return bs;
+  }
+
   public void ExportToFile(string filePath) {
     var output = new AstMappingOutput {
       Methods = new List<MethodMapping>(Methods.Values),
@@ -509,6 +636,9 @@ public class MethodMapping {
 
   [JsonPropertyName("foralls")]
   public List<ForallMapping> Foralls { get; set; } = new();
+
+  [JsonPropertyName("bodyStatements")]
+  public List<BodyStatement> BodyStatements { get; set; }
 }
 
 public class FunctionMapping {
@@ -689,4 +819,23 @@ public class ForallMapping {
 
   [JsonPropertyName("location")]
   public SourceLocation Location { get; set; }
+}
+
+/// <summary>
+/// Represents a statement in the method body (excluding asserts).
+/// Used for code comparison: the LLM should only add assertions,
+/// not modify the existing code structure.
+/// </summary>
+public class BodyStatement {
+  [JsonPropertyName("type")]
+  public string Type { get; set; }
+
+  [JsonPropertyName("line")]
+  public int Line { get; set; }
+
+  [JsonPropertyName("text")]
+  public string Text { get; set; }
+
+  [JsonPropertyName("children")]
+  public List<BodyStatement> Children { get; set; }
 }
